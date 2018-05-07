@@ -104,7 +104,7 @@ set logscale x 2
 set logscale y 2
 set autoscale z
 #set xrange [2.**5:2.**24]
-set xlabel "File size in KBytes"
+set xlabel "File size in Kbytes"
 set ylabel "Record size in Kbytes"
 set zlabel "Kbytes/sec"
 set style data lines
@@ -126,7 +126,7 @@ set title "Iozone performance: $column"
 #set terminal png small picsize 450 350
 set terminal png small size 450 350
 set logscale x
-set xlabel "File size in KBytes"
+set xlabel "File size in Kbytes"
 set ylabel "Kbytes/sec"
 set output "2d-$column.png"
 };

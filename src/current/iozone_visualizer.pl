@@ -242,7 +242,7 @@ set ytics $yoffset
 set logscale x 2
 set logscale y 2
 set autoscale z
-set xlabel "File size in KBytes"
+set xlabel "File size in Kbytes"
 set ylabel "Record size in Kbytes"
 set zlabel "Kb/s"
 set style data lines
@@ -275,7 +275,7 @@ set title "Iozone performance: $column"
 #set terminal png small picsize 450 350
 set terminal png medium size $size2d nocrop
 set logscale x
-set xlabel "File size in KBytes"
+set xlabel "File size in Kbytes"
 set ylabel "Kbytes/sec"
 set output "2d-$column.png"
 _GNUPLOT_
