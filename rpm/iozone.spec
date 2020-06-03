@@ -4,7 +4,6 @@ Version: 3.489
 Release: 1
 License: Freeware
 URL: http://www.iozone.org
-Group: Applications/Engineering
 Source: %{name}-%{version}.tar.gz
 
 %description
@@ -18,57 +17,34 @@ fread, fwrite, random read, pread ,mmap, aio_read, aio_write.
 
 %prep
 
-%setup -q -n %{name}-%{version}/src/current
+%autosetup -p1 -n %{name}-%{version}/src/current
 
 %build
+echo "Building for %{_arch} arch."
 %ifarch %{ix86}
-    make linux
+  %make_build linux
 %else
-    %ifarch x86_64
-        make linux-AMD64
+  %ifarch %{arm}
+    %make_build linux-arm
+  %else
+    %ifarch aarch64
+      %make_build linux-arm
     %else
-        %ifarch ia64
-            make linux-ia64
-        %else
-            %ifarch ppc
-                make  linux-powerpc
-            %else
-                %ifarch ppc64
-                    make linux-powerpc64
-                %else
-                    %ifarch s390
-                        make linux-S390
-                    %else
-                        %ifarch s390x
-                            make linux-S390X
-                    	%else
-                           %ifarch %{arm}
-                               make linux-arm
-			   %else
-			      echo "No idea how to build for your arch..."
-			      exit 1
-			   %endif
-                        %endif
-                    %endif
-                %endif
-            %endif
-        %endif
+      echo "No idea how to build for your arch..."
+      exit 1
     %endif
+  %endif
 %endif
 
 %install
-mkdir -p $RPM_BUILD_ROOT/opt/iozone/bin
-cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/iozone $RPM_BUILD_ROOT/opt/iozone/bin/
-cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/fileop $RPM_BUILD_ROOT/opt/iozone/bin/
-cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/pit_server $RPM_BUILD_ROOT/opt/iozone/bin/
-cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/Generate_Graphs $RPM_BUILD_ROOT/opt/iozone/bin/
-cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/gengnuplot.sh $RPM_BUILD_ROOT/opt/iozone/bin/
-cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/gnu3d.dem $RPM_BUILD_ROOT/opt/iozone/bin/
-
-mkdir -p $RPM_BUILD_ROOT/opt/iozone/man/man1
-cp $RPM_BUILD_DIR/%{name}-%{version}/docs/iozone.1 $RPM_BUILD_ROOT/opt/iozone/man/man1/
+mkdir -p $RPM_BUILD_ROOT/opt/%{name}/bin
+cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/iozone $RPM_BUILD_ROOT/opt/%{name}/bin/
+cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/fileop $RPM_BUILD_ROOT/opt/%{name}/bin/
+cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/pit_server $RPM_BUILD_ROOT/opt/%{name}/bin/
+cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/Generate_Graphs $RPM_BUILD_ROOT/opt/%{name}/bin/
+cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/gengnuplot.sh $RPM_BUILD_ROOT/opt/%{name}/bin/
+cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/gnu3d.dem $RPM_BUILD_ROOT/opt/%{name}/bin/
 
 %files
 %defattr(-,root,root,-)
 /opt/%{name}/bin/
-%doc /opt/%{name}/man/
