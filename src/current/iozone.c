@@ -7,7 +7,7 @@
 /************************************************************************/
 /*      Enhancements by:						*/
 /*	 	Don Capps (capps@iozone.org)				*/
-/* 		7417 Crenshaw						*/
+/* 		7417 Crenshaw Dr.					*/
 /* 		Plano, TX 75025						*/
 /*  									*/
 /************************************************************************/
@@ -60,7 +60,7 @@
 
 
 /* The version number */
-#define THISVERSION "        Version $Revision: 3.478 $"
+#define THISVERSION "        Version $Revision: 3.489 $"
 
 #if defined(Windows)
 #define NO_THREADS
@@ -97,6 +97,13 @@ extern  int h_errno; /* imported for errors */
 
 #ifndef NO_THREADS
 #include <pthread.h>
+#endif
+
+#ifdef ANDROID
+
+#include <sys/syscall.h>
+#define pthread_setaffinity_np(pid, size, cpuset) \
+   syscall(__NR_sched_setaffinity, (pid_t)pid, (size_t)size, (void *)cpuset)
 #endif
 
 #if defined(HAVE_ANSIC_C) && defined(linux)
@@ -249,6 +256,7 @@ char *help[] = {
 "           -+P Service     Service  of the PIT server.",
 "           -+z Enable latency histogram logging.",
 "           -+M Enable Dedup+compress option. (Experimental).",
+"           -+R enable iozone to take filenames from a file.",
 "" };
 
 char *head1[] = {
@@ -368,6 +376,7 @@ typedef off_t off64_t;
 #endif
 
 
+#ifndef ANDROID
 #ifndef solaris
 #ifndef off64_t
 #ifndef _OFF64_T
@@ -378,6 +387,7 @@ typedef off_t off64_t;
 #ifndef __DragonFly__
 #ifndef __FreeBSD__
 typedef long long off64_t;
+#endif
 #endif
 #endif
 #endif
@@ -1553,6 +1563,7 @@ char aflag, Eflag, hflag, Rflag, rflag, sflag,del_flag,mix_test;
 char diag_v,sent_stop,dedup,dedup_interior,dedup_compress, dedup_flag, dedup_iflag,dedup_bflag;
 int zero_pct = -1;
 int N_special = 0;
+int W_special = 0;
 int dedup_granule_size = 4096;
 int dedup_unit_step = 1024;
 char *dedup_ibuf;
@@ -1584,7 +1595,7 @@ struct runtime runtimes [MAX_X] [MAX_Y];	/* in parallel with report_array[][] */
 long long include_test[50];
 long long include_mask;
 char RWONLYflag, NOCROSSflag;		/*auto mode 2 - kcollins 8-21-96*/
-char mfflag;
+char mfflag,F_flag;
 long long status, x, y, childids[MAXSTREAMS+1], myid, num_child;
 int pct_read,speed_code;
 #ifndef NO_THREADS
@@ -1638,8 +1649,8 @@ char Cflag;
 char use_thread = 0;
 long long debug1=0;		
 long long debug=0;
-unsigned long cache_size=MY_CACHE_SIZE;
-unsigned long cache_line_size=MY_CACHE_LINE_SIZE;
+unsigned long cache_size=(long long)MY_CACHE_SIZE;
+unsigned long cache_line_size=(long long)MY_CACHE_LINE_SIZE;
 long long *pstatus;
 off64_t min_file_size = KILOBYTES_START;
 off64_t max_file_size = KILOBYTES_END;
@@ -1907,7 +1918,7 @@ char **argv;
     	sprintf(splash[splash_line++],"\t             Erik Habbinga, Kris Strecker, Walter Wong, Joshua Root,\n");
     	sprintf(splash[splash_line++],"\t             Fabrice Bacchella, Zhenghua Xue, Qin Li, Darren Sawyer,\n");
     	sprintf(splash[splash_line++],"\t             Vangel Bojaxhi, Ben England, Vikentsi Lapa,\n");
-    	sprintf(splash[splash_line++],"\t             Alexey Skidanov.\n\n");
+    	sprintf(splash[splash_line++],"\t             Alexey Skidanov, Sudhir Kumar.\n\n");
 	sprintf(splash[splash_line++],"\tRun began: %s\n",ctime(&time_run));
 	argcsave=argc;
 	argvsave=argv;
@@ -2028,22 +2039,26 @@ char **argv;
 			sprintf(splash[splash_line++],"\tVxFS advanced feature SET_CACHE, VX_DIRECT enabled\n");
 			break;
 #endif
-#if ! defined(DONT_HAVE_O_DIRECT)
-#if defined(linux) || defined(__AIX__) || defined(IRIX) || defined(IRIX64) || defined(Windows) || defined(__FreeBSD__) || defined(solaris) || defined(IOZ_macosx)
+#if !defined(DONT_HAVE_O_DIRECT)
+  #if defined(linux) || defined(__AIX__) || defined(IRIX) || defined(IRIX64) || defined(Windows) || defined(__FreeBSD__) || defined(solaris) || defined(IOZ_macosx)
 			direct_flag++;
-			sprintf(splash[splash_line++],"\tO_DIRECT feature enabled\n");
-			break;
+#if defined __APPLE__ && __MACH__
+            		sprintf(splash[splash_line++],"\tF_NOCACHE=1 - Turns data caching off\n");
+#else
+                        sprintf(splash[splash_line++],"\tO_DIRECT feature enabled\n");
 #endif
-#if defined(TRU64)
+
+			break;
+  #endif
+  #if defined(TRU64)
 			direct_flag++;
 			sprintf(splash[splash_line++],"\tO_DIRECTIO feature enabled\n");
 			break;
-#endif
+  #endif
 #else
-			break;
-#endif
-#if defined(Windows)
+  #if defined(Windows)
 			sprintf(splash[splash_line++],"\tO_DIRECTIO feature not available in Windows version.\n");
+  #endif
 			break;
 #endif
 		case 'B':	/* Use mmap file for test file */
@@ -2143,7 +2158,7 @@ char **argv;
 				num_child=1;
 			}else
 				num_child=mint;
-			if(mint > (unsigned long long)MAXSTREAMS){
+			if(mint > (long long)MAXSTREAMS){
 			  printf("Invalid options: maximum streams for ");
 			  printf("throughput is MAXSTREAMS\n");
 			  exit(4);
@@ -2296,6 +2311,7 @@ char **argv;
 			break;
 		case 'F':	/* Specify multiple file names for -t */
 	 		mfflag++;
+			F_flag++;
 			if(fflag) {
 			  printf("invalid options: -f and -F are mutually exclusive\n");
 			  exit(11);
@@ -2305,17 +2321,19 @@ char **argv;
 			  exit(12);
 			}
 			optind--;
-			for(fileindx=0;fileindx<maxt;fileindx++) {
-			  filearray[fileindx]=argv[optind++];
-			  if(optind > argc) {
+			for(fileindx=0;fileindx<maxt;fileindx++) 
+			{
+			         filearray[fileindx]=argv[optind++];
+			         if(optind > argc) 
+				 {
 #ifdef NO_PRINT_LLD
-			    printf("invalid options: not enough filenames for %ld streams\n",num_child);
+			             printf("invalid options: not enough filenames for %ld streams\n",num_child);
 #else
-			    printf("invalid options: not enough filenames for %lld streams\n",num_child);
+			             printf("invalid options: not enough filenames for %lld streams\n",num_child);
 #endif
-			    exit(13);
-			  }
-			}
+			             exit(13);
+			         }
+		        }
 			break;
 		case 'r':	/* Specify the record size to use */
 			rflag++;
@@ -2417,7 +2435,7 @@ char **argv;
 				exit(183);
 			}
 #endif
-			if(tval > sizeof(func)/sizeof(char *)) 
+			if(tval > (long long)(sizeof(func)/sizeof(char *))) 
 			{
 				tval=0;
 				sprintf(splash[splash_line++],"\tSelected test not available on the version.\n");
@@ -2684,6 +2702,59 @@ char **argv;
 					N_special = 1;
                                         sprintf(splash[splash_line++],"\tDedup+compress enabled\n ");
 					break;
+ 				case 'R':  /* Speical Windows option to read filelist from a input file. Experimental */
+	 				mfflag++;
+					subarg = argv[optind++];
+                                        if(subarg==(char *)0)
+                                        {
+                                             printf("-+R takes an operand !!\n");
+                                             exit(200);
+                                        }
+                                        sprintf(splash[splash_line++],"\tFilenames from a file option enabled. File: %s\n ",subarg);
+			 		/* filename should be used instead of filelist */
+                            		struct stat outbuf;
+                            		int result;
+                            		result = stat(subarg, &outbuf);
+                            		if(result == -1) {
+                                    		printf("Failed to stat the iozone input file: %s\n",argv[optind]);
+                                    		exit(errno);
+                            		} 
+			    		else 
+			    		{
+                            			/* read the input file and populate the  filearray */
+                                		int fileindx = 0;
+                                		FILE * fp;
+						char * lbuffer;
+                                		fp = fopen(subarg, "r");
+                                		while ( 1 )
+			        		{
+						    lbuffer=malloc(MAXNAMESIZE);
+						    memset(lbuffer,0,MAXNAMESIZE);
+						    if(fgets(lbuffer,MAXNAMESIZE,fp) == 0) 
+							break;
+                                    		    if(strlen(lbuffer) > 0)
+				    		    {
+							/* strip newline */
+							if(lbuffer[strlen(lbuffer)-1] == '\n')
+							    lbuffer[strlen(lbuffer)-1] = 0;	
+                                        		filearray[fileindx]= lbuffer;
+                                        		fileindx++;
+                                    		    }
+                                		}
+                                		fclose(fp);
+                                		if(fileindx > num_child) 
+						{
+#ifdef NO_PRINT_LLD
+                                    		    printf("invalid options: not enough filenames for %ld streams\n",num_child);
+#else
+                                    		    printf("invalid options: not enough filenames for %lld streams\n",num_child);
+#endif
+                                    		    exit(13);
+
+                                		}
+                            		}
+					break;
+
 				case 'c':  /* Argument is the controlling host name */
 					/* I am a client for distributed Iozone */
 					subarg=argv[optind++];
@@ -3167,7 +3238,7 @@ char **argv;
         /* Enforce only write,rewrite,read,reread */
         if(w_traj_flag || r_traj_flag)
         {
-                for(i=2;i<sizeof(func)/sizeof(char *);i++)
+                for(i=2;i<(long long)(sizeof(func)/sizeof(char *));i++)
                 {
                         if(seq_mix && (i==8))
                                 ;
@@ -3273,7 +3344,7 @@ char **argv;
 	}
 	if(include_tflag)
 	{
-		for(i=0;i<sizeof(func)/sizeof(char *);i++)
+		for(i=0;i<(long long)(sizeof(func)/sizeof(char *));i++)
 			if(include_test[i])
 				include_mask|=(long long)(1<<i);
 		/* printf(">> %llx",include_mask);  HERE */
@@ -7356,8 +7427,8 @@ char sverify;
 		de_ibuf = (long *)buffer;
 		de_obuf = (long *)dedup_temp;
 		if(lite)	/* short touch to reduce intrusion */
-			length = (long) sizeof(long);
-		for(i=0;i<length/sizeof(long);i++)
+			length = (long long) sizeof(long);
+		for(i=0;i<(off64_t) (length/sizeof(long));i++)
 		{
 			if(de_ibuf[i]!= de_obuf[i])
 			{
@@ -7421,7 +7492,7 @@ char sverify;
 	{
 	  for(i=0;i<(length/cache_line_size);i++)
 	  {
-	   for(j=0;j<(cache_line_size/sizeof(long long));j++)
+	   for(j=0;j<(long long)(cache_line_size/sizeof(long long));j++)
 	   {
               if(diag_v)
 	      {
@@ -7439,7 +7510,7 @@ char sverify;
 		   file_position = (off64_t)( (recnum * recsize))+
 			((i*cache_line_size)+(j*sizeof(long long)));
 		   where2=(char *)where;
-		   for(k=0;k<sizeof(long long);k++){
+		   for(k=0;k<(long long)(sizeof(long long));k++){
 		   	if(*where2 != *pattern_ptr)
 				break;
 		   	where2++;
@@ -7536,7 +7607,7 @@ char sverify;
 	{
 		for(i=0;i<(length/cache_line_size);i++)
 		{
-			for(j=0;j<(cache_line_size/sizeof(long long));j++)
+			for(j=0;j<(long long)((cache_line_size/sizeof(long long)));j++)
 			{
 				if(diag_v)
 				{
@@ -7642,7 +7713,7 @@ long long *data2;
 	off64_t numrecs64,traj_offset;
 	off64_t lock_offset=0;
 	long long Index = 0;
-	long long file_flags = 0;
+	int file_flags = 0;
 	long long traj_size;
 	unsigned long long writerate[2];
 	off64_t filebytes64;
@@ -7848,6 +7919,16 @@ long long *data2;
 #if defined(Windows)
 	  	}
 #endif
+
+#if defined __APPLE__ && __MACH__
+        	if(direct_flag) {
+            	   if (fcntl(fd,F_NOCACHE,1) == -1 ) {
+                      printf("\n%s while fcntl",strerror(errno));
+                      exit(51966);
+                   }
+                }
+#endif
+
 #ifdef VXFS
 		if(direct_flag)
 		{
@@ -9245,7 +9326,7 @@ long long *data1, *data2;
             for(i = 0; i < numrecs64; i++){
                 recnum[i] = i;
             }
-            for(i = 0; i < numrecs64; i++) {
+            for(i = numrecs64-1; i >= 0; i--) {
                 long long tmp;
 #ifdef MERSENNE
       	       big_rand=genrand64_int64();
@@ -9266,7 +9347,7 @@ long long *data1, *data2;
 #endif
 #endif
 #endif
-               big_rand = big_rand%numrecs64;
+               big_rand = big_rand % (i+1);
                tmp = recnum[i];
                recnum[i] = recnum[big_rand];
                recnum[big_rand] = tmp;
@@ -12459,7 +12540,9 @@ int shared_flag;
 {
 	long long size1;
 	char *addr,*dumb;
+#ifdef SHARED_MEM
 	int shmid;
+#endif
 	int tfd;
 	long long tmp;
 #if defined(solaris) 
@@ -12581,7 +12664,7 @@ int shared_flag;
 		exit(122);
 	}
 	if(debug1)
-		printf("Got shared memory for size %d\n",size1);
+		printf("Got shared memory for size %lld\n",size1);
 
 	return(addr);
 #endif
@@ -12848,19 +12931,18 @@ thread_write_test( x)
 		nbuff=buffer;
 	if(debug1 )
 	{
-	   if(use_thread)
+	    if(use_thread)
 #ifdef NO_PRINT_LLD
 		printf("\nStarting child %ld\n",(long)xx);
 #else
 		printf("\nStarting child %lld\n",(long long)xx);
 #endif
-	   else
+	    else
 #ifdef NO_PRINT_LLD
 		printf("\nStarting process %d slot %ld\n",getpid(),(long)xx);
 #else
 		printf("\nStarting process %d slot %lld\n",getpid(),(long long)xx);
 #endif
-		
 	}
 	dummyfile[xx]=(char *)malloc((size_t)MAXNAMESIZE);
 	xx2=xx;
@@ -12869,17 +12951,17 @@ thread_write_test( x)
 	if(mfflag)
 	{
 #ifdef NO_PRINT_LLD
-		sprintf(dummyfile[xx],"%s",filearray[xx2]);
+	    sprintf(dummyfile[xx],"%s",filearray[xx2]);
 #else
-		sprintf(dummyfile[xx],"%s",filearray[xx2]);
+	    sprintf(dummyfile[xx],"%s",filearray[xx2]);
 #endif
 	}
 	else
 	{
 #ifdef NO_PRINT_LLD
-		sprintf(dummyfile[xx],"%s.DUMMY.%ld",filearray[xx2],(long)xx2);
+	    sprintf(dummyfile[xx],"%s.DUMMY.%ld",filearray[xx2],(long)xx2);
 #else
-		sprintf(dummyfile[xx],"%s.DUMMY.%lld",filearray[xx2],(long long)xx2);
+	    sprintf(dummyfile[xx],"%s.DUMMY.%lld",filearray[xx2],(long long)xx2);
 #endif
 	}
 	/*****************/
@@ -17615,7 +17697,7 @@ void *x;
             for(i = 0; i < numrecs64; i++){
                 recnum[i] = i;
             }
-            for(i = 0; i < numrecs64; i++) {
+            for(i = numrecs64-1; i >= 0; i--) {
                 long long tmp = recnum[i];
 #ifdef MERSENNE
       	       big_rand = genrand64_int64();
@@ -17636,7 +17718,7 @@ void *x;
 #endif
 #endif
 #endif
-               big_rand = big_rand%numrecs64;
+               big_rand = big_rand % (i+1);
                tmp = recnum[i];
                recnum[i] = recnum[big_rand];
                recnum[big_rand] = tmp;
@@ -18254,7 +18336,7 @@ thread_ranwrite_test( x)
             for(i = 0; i < numrecs64; i++){
                 recnum[i] = i;
             }
-            for(i = 0; i < numrecs64; i++) {
+            for(i = numrecs64-1; i >= 0; i--) {
                 long long tmp = recnum[i];
 #ifdef MERSENNE
       	       big_rand = genrand64_int64();
@@ -18275,7 +18357,7 @@ thread_ranwrite_test( x)
 #endif
 #endif
 #endif
-               big_rand = big_rand%numrecs64;
+               big_rand = big_rand % (i+1);
                tmp = recnum[i];
                recnum[i] = recnum[big_rand];
                recnum[big_rand] = tmp;
@@ -20900,7 +20982,11 @@ again:
         }
         if(mdebug)
           printf("Master in accepting connection\n");
+#if defined(ANDROID)
+        ns=accept((int)s,(struct sockaddr *)addr,(socklen_t *)&me);
+#else
         ns=accept(s,(void *)addr,&me);
+#endif
         if(ns < 0)
         {
                 printf("Master socket %d\n",s);
@@ -21400,7 +21486,11 @@ int s,flag;
 		fprintf(newstdout,"Child %d enters accept\n",(int)chid);
 		fflush(newstdout);
 	}
-	ns=accept(s,(void *)addr,&me);
+#if defined(ANDROID)
+        ns=accept((int)s,(struct sockaddr *)addr,(socklen_t *)&me);
+#else
+        ns=accept(s,(void *)addr,&me);
+#endif
 	if(cdebug)
 	{
 		fprintf(newstdout,"Child %d attached for receive. Sock %d  %d\n",
@@ -23723,7 +23813,11 @@ int size_of_message;
 		fprintf(newstdout,"Child enters accept\n");
 		fflush(newstdout);
 	}
-	ns=accept(s,(void *)addr,&me);
+#if defined(ANDROID)
+        ns=accept((int)s,(struct sockaddr *)addr,(socklen_t *)&me);
+#else
+        ns=accept(s,(void *)addr,&me);
+#endif
 	if(cdebug)
 	{
 		fprintf(newstdout,"Child attached for receive. Sock %d  %d\n", ns,errno);
@@ -23960,7 +24054,11 @@ int sp_master_listen_port;
 		printf("Master enters accept\n");
 		fflush(stdout);
 	}
-	ns=accept(s,(void *)addr,&me);
+#if defined(ANDROID)
+        ns=accept((int)s,(struct sockaddr *)addr,(socklen_t *)&me);
+#else
+        ns=accept(s,(void *)addr,&me);
+#endif
 	if(mdebug)
 	{
 		printf("Master attached for receive. Sock %d  %d\n", ns,errno);
@@ -24365,7 +24463,7 @@ special_gen_new_buf(char *ibuf, char *obuf, long seed, int size, int percent,
 
         for(w=(interior_size-compress_size);w<interior_size;w+=sizeof(int))
         {
-                if ((zero_pct != -1) && *ip ) /* if *ip and active zero_pct, do nothing */
+                if ((zero_pct != -1) && (*ip==0) ) /* if *ip and active zero_pct, do nothing */
 			;
 		else
 			*op = *ip ^ cseed; /* if *ip is not zero, do the xor op */
@@ -24471,7 +24569,7 @@ new_touch_dedup(char *i, int size)
         /* To make sure every fileset generates different dedup patterns */
         srand(DEDUPSEED+dedup_mseed);
 
-        for(x=0;x<size/sizeof(int);x++)
+        for(x=0;x<(int)(size/sizeof(int));x++)
         {
                 if ( zero_pct >= 0 ) {
                         *ip=compressible_rand(); /* fill initial buffer  */
@@ -26108,7 +26206,7 @@ touch_dedup(char *i, int size)
 	}
         ip = (int *)i;
         srand(DEDUPSEED);
-        for(x=0;x<size/sizeof(int);x++)
+        for(x=0;x<(int)(size/sizeof(int));x++)
         {
                 *ip=rand(); /* fill initial buffer */
                 ip++;
@@ -26210,4 +26308,3 @@ gen_new_buf(char *ibuf, char *obuf, long seed, int size, int percent,
         }
         return(0);
 }
-

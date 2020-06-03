@@ -161,7 +161,7 @@ extern int one;
  * cache, pointed to by async_init(gc) will be of
  * this structure type.
  */
-static const char version[] = "Libasync Version $Revision: 3.32 $";
+static const char version[] = "Libasync Version $Revision: 3.34 $";
 struct cache_ent {
 #if defined(_LARGEFILE64_SOURCE) && defined(__CrayX1__)
 	aiocb64_t myaiocb;		/* For use in large file mode */
@@ -212,7 +212,7 @@ void takeoff_cache(struct cache *, struct cache_ent *);
 void del_cache(struct cache *);
 void putoninuse(struct cache *,struct cache_ent *);
 void takeoffinuse(struct cache *);
-struct cache_ent * allocate_write_buffer( struct cache *, long long , long long ,long long, off64_t, long long, long long, char *, char *);
+struct cache_ent * allocate_write_buffer( struct cache *, long long , long long ,long long, long long, long long, long long, char *, char *);
 void async_put_on_write_queue(struct cache *, struct cache_ent *);
 void async_write_finish(struct cache *);
 void async_wait_for_write(struct cache *);
@@ -222,7 +222,7 @@ struct cache_ent * incache(struct cache *, long long, off64_t, long long);
 int async_read_no_copy(struct cache *, long long, char **, off64_t, long long, long long, off64_t, long long);
 void async_release(struct cache *gc);
 size_t async_write(struct cache *,long long, char *, long long, off64_t, long long);
-size_t async_write_no_copy(struct cache *gc,long long fd,char *buffer,long long size,off64_t offset,long long depth,char *free_addr);
+size_t async_write_no_copy(struct cache *gc,long long fd,char *buffer,long long size,long long offset,long long depth,char *free_addr);
 #else
 void async_init();
 void end_async();
@@ -297,8 +297,12 @@ struct cache *gc;
 #endif
 {
 	del_cache(gc);
-	async_write_finish(gc);
-	free((void *)gc);
+	if(gc && (gc->w_head !=NULL))
+	   async_write_finish(gc);
+
+	if(gc != NULL)
+	   free((void *)gc);
+	gc = NULL;
 }
 
 /***********************************************/
@@ -531,8 +535,9 @@ off64_t offset;
 	ce->myaiocb.aio_fildes=(int)fd;
 	ce->myaiocb.aio_offset=(off64_t)offset;
 	ce->real_address = malloc((size_t)(size+page_size));
+printf("\nAllocate buffer2 %p Size %lld \n",ce->real_address,size+page_size);
 	temp = (intptr_t)ce->real_address;
-	temp = (temp+page_size) & ~(page_size-1);
+	temp = (temp+(page_size-1)) & ~(page_size-1);
 	ce->myaiocb.aio_buf=(volatile void *)temp;
 	if(ce->myaiocb.aio_buf == NULL)
 	{
@@ -610,8 +615,12 @@ takeoff_cache(struct cache *gc, struct cache_ent *ce)
 			gc->tail = 0;
 		if(!ce->direct)
 		{
-			free((void *)(ce->real_address));
-			free((void *)ce);
+			if(ce->real_address != NULL)
+			   free((void *)(ce->real_address));
+			ce->real_address = NULL;
+			if(ce != NULL)
+			   free((void *)ce);
+			ce = NULL;
 		}
 		gc->count--;
 		return;
@@ -644,8 +653,12 @@ takeoff_cache(struct cache *gc, struct cache_ent *ce)
 	move=gc->head;
 	if(!ce->direct)
 	{
-		free((void *)(ce->real_address));
-		free((void *)ce);
+		if(ce->real_address != NULL)
+		   free((void *)(ce->real_address));
+		ce->real_address = NULL;
+		if(ce != NULL)
+		   free((void *)ce);
+		ce = NULL;
 	}
 	gc->count--;
 }
@@ -901,8 +914,12 @@ struct cache *gc;
 	
 	if(gc->inuse_head !=0)
 		printf("Error in take off inuse\n");
-	free((void*)(ce->real_address));
-	free(ce);
+	if(ce->real_address != NULL)
+	   free((void*)(ce->real_address));
+	ce->real_address = NULL;
+	if(ce != NULL)
+	   free(ce);
+	ce = NULL;
 }
 
 /*************************************************************************
@@ -978,8 +995,8 @@ again:
 
 #ifdef HAVE_ANSIC_C
 struct cache_ent *
-allocate_write_buffer( struct cache *gc, long long fd, long long size,long long op, 
-	off64_t offset, long long w_depth, long long direct, char *buffer, char *free_addr)
+allocate_write_buffer( struct cache *gc, long long fd, long long offset, long long size,long long op, 
+	long long w_depth, long long direct, char *buffer, char *free_addr)
 #else
 struct cache_ent *
 allocate_write_buffer(gc,fd,offset,size,op,w_depth,direct,buffer,free_addr)
@@ -1013,7 +1030,7 @@ char *buffer,*free_addr;
 	{
 		ce->real_address = malloc((size_t)(size+page_size));
 		temp = (intptr_t)ce->real_address;
-		temp = (temp+page_size) & ~(page_size-1);
+		temp = (temp+(page_size-1)) & ~(page_size-1);
 		ce->myaiocb.aio_buf=(volatile void *)temp;
 	}
 	else
@@ -1073,7 +1090,6 @@ struct cache *gc;
 {
 	while(gc->w_head)
 	{
-		/*printf("async_write_finish: Waiting for buffer %x to finish\n",gc->w_head->myaiocb.aio_buf);*/
 		async_wait_for_write(gc);
 	}
 }
@@ -1097,9 +1113,11 @@ struct cache *gc;
 	if(gc->w_head==0)
 		return;
 	ce=gc->w_head;
+        if(ce == NULL)
+		return;
 	gc->w_head=ce->forward;
 	gc->w_count--;
-	ce->forward=0;
+	ce->forward=NULL;
 	if(ce==gc->w_tail)
 		gc->w_tail=0;
 	/*printf("Wait for buffer %x  offset %lld  size %zd to finish\n",
@@ -1130,9 +1148,12 @@ struct cache *gc;
 
 	if(!ce->direct)
 	{
-		/* printf("Freeing buffer %x\n",ce->real_address);*/
-		free((void *)(ce->real_address));
-		free((void *)ce);
+		if(ce->real_address != NULL)
+		   free((void *)(ce->real_address)); /* Causes crash. */
+		ce->real_address=NULL;
+		if(ce != NULL)
+		   free((void *)ce);
+		ce=NULL;
 	}
 
 }
@@ -1149,14 +1170,14 @@ struct cache *gc;
  *************************************************************************/
 #ifdef HAVE_ANSIC_C
 size_t
-async_write_no_copy(struct cache *gc,long long fd,char *buffer,long long size,off64_t offset,long long depth,char *free_addr)
+async_write_no_copy(struct cache *gc,long long fd,char *buffer,long long size,long long offset,long long depth,char *free_addr)
 #else
 size_t
 async_write_no_copy(gc,fd,buffer,size,offset,depth,free_addr)
 struct cache *gc;
 long long fd,size;
 char *buffer;
-off64_t offset;
+long long offset;
 long long depth;
 char *free_addr;
 #endif

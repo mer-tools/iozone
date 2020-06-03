@@ -1,5 +1,5 @@
 #
-# Version $Revision: 1.148 $
+# Version $Revision: 1.155 $
 #
 # The makefile for building all versions of iozone for all supported
 # platforms
@@ -18,6 +18,9 @@ CFLAGS	=
 S10GCCFLAGS    = -m64
 S10CCFLAGS     = -m64
 FLAG64BIT      = -m64
+NDK_ENV_VAR    := $(shell echo $$NDK)
+NDKBUILD       := $(shell which ndk-build)
+
 
 # If your Linux kernel supports preadv and pwritev system calls 
 # and you want iozone to use them, add -DHAVE_PREADV -DHAVE_PWRITEV
@@ -30,6 +33,7 @@ all:
 	@echo "        ->   AIX-LF               (32bit)   <-"
 	@echo "        ->   AIX64                (32bit)   <-"
 	@echo "        ->   AIX64-LF             (32bit)   <-"
+	@echo "        ->   android   (arm/x86 32/64bit)   <-"
 	@echo "        ->   bsdi                 (32bit)   <-" 
 	@echo "        ->   convex               (32bit)   <-" 
 	@echo "        ->   CrayX1               (32bit)   <-"
@@ -56,7 +60,7 @@ all:
 	@echo "        ->   linux-powerpc        (32bit)   <-"
 	@echo "        ->   linux-powerpc64      (64bit)   <-"
 	@echo "        ->   linux-sparc          (32bit)   <-"
-	@echo "        ->   macosx               (32bit)   <-"
+	@echo "        ->   macosx               (32/64bit)<-"
 	@echo "        ->   netbsd               (32bit)   <-"
 	@echo "        ->   netbsd-AMD64         (64bit)   <-"
 	@echo "        ->   openbsd              (32bit)   <-"
@@ -218,6 +222,29 @@ linux-arm:	iozone_linux-arm.o  libbif.o libasync.o fileop_linux-arm.o pit_server
 		-lrt -lpthread -o iozone
 	$(CC) -O3 -Dlinux fileop_linux-arm.o -o fileop
 	$(CC) -O3 -Dlinux pit_server.o -o pit_server
+#
+# GNU 'C' or Clang compiler Linux build with threads, largefiles, async I/O
+#
+
+android: iozone.c  makefile Android.mk Application.mk libbif.c
+ifeq ($(NDK_ENV_VAR)$(NDKBUILD),)
+	$(warning Your NDK environment is not set)
+	$(warning Either add to your path ndk-bundle or define NDK environement variable)
+	$(warning ndk-bundle is likely located within you android sdk e.g. <...>/Android/sdk/ndk-bundle )
+	$(error e.g. export NDK='/home/me/Android/Sdk/ndk-bundle')
+endif
+	mkdir -p jni
+	ln -sf ../Android.mk ./jni/Android.mk
+	ln -sf ../Application.mk ./jni/Application.mk
+	ln -sf ../iozone.c ./jni/iozone.c
+	ln -sf ../libbif.c ./jni/libbif.c
+ifeq ($(NDKBUILD),) 
+ifneq ($(NDK_ENV_VAR),) 
+	${NDK}/ndk-build 
+endif 
+else 
+	${NDKBUILD} 
+endif
 
 #
 # GNU 'C' compiler Linux build with threads, largefiles, async I/O 
@@ -511,13 +538,13 @@ dragonfly:	iozone_dragonfly.o libbif.o fileop_dragonfly.o pit_server.o
 	$(CC)  -O pit_server.o -o pit_server
 
 #
-# GNU C compiler MacosX build with no threads, no largefiles, no async I/O
+# GNU C or Clang compiler MacosX build with no threads, no largefiles, no async I/O
 #
 
 macosx:	iozone_macosx.o fileop_macosx.o pit_server.o
-	$(CC) -O $(LDFLAGS) iozone_macosx.o libbif.o -o iozone
-	$(CC) -O $(LDFLAGS) fileop_macosx.o -o fileop
-	$(CC) -O $(LDFLAGS) pit_server.o -o pit_server
+	$(CC) -O3 $(LDFLAGS) iozone_macosx.o libbif.o -o iozone
+	$(CC) -O3 $(LDFLAGS) fileop_macosx.o -o fileop
+	$(CC) -O3 $(LDFLAGS) pit_server.o -o pit_server
 #
 #
 # GNU C compiler OpenBSD build with no threads, no largefiles, no async I/O
@@ -936,7 +963,7 @@ fileop_macosx.o:	fileop.c
 	@echo ""
 	@echo "Building fileop for MAC OS X"
 	@echo ""
-	$(CC) -Wall -c -O -DIOZ_macosx $(CFLAGS) fileop.c -o fileop_macosx.o
+	$(CC) -Wall -c -O3 -DIOZ_macosx $(CFLAGS) fileop.c -o fileop_macosx.o
 
 fileop_linux-ia64.o:	fileop.c
 	@echo ""
@@ -967,6 +994,12 @@ fileop_linux-arm.o:  fileop.c
 	@echo "Building fileop for Linux-arm"
 	@echo ""
 	$(GCC) -Wall -c -O3 $(CFLAGS) fileop.c -o fileop_linux-arm.o
+
+fileop_android.o:  fileop.c
+	@echo ""
+	@echo "Building fileop for Android"
+	@echo ""
+	$(GCC) -Wall -c -O3 $(CFLAGS) $(ANDROID_CFLAGS) fileop.c -o fileop_android.o
 
 fileop_linux-s390.o:  fileop.c
 	@echo ""
@@ -1016,6 +1049,19 @@ iozone_linux-arm.o:	iozone.c libbif.c libasync.c
 		-DSHARED_MEM -Dlinux $(CFLAGS) libbif.c -o libbif.o
 	$(CC) -c -O3 -Dunix -Dlinux -DHAVE_ANSIC_C -DASYNC_IO \
 		-D_LARGEFILE64_SOURCE $(CFLAGS) libasync.c  -o libasync.o
+
+iozone_android.o:	iozone.c libbif.c libasync.c
+	@echo ""
+	@echo "Building iozone for Android"
+	@echo ""
+	$(CC) -c -O3 -Dunix -DHAVE_ANSIC_C -DASYNC_IO -DHAVE_PREAD \
+		-DNAME='"android"' -DLINUX_ARM -DANDROID -DSHARED_MEM \
+		-Dlinux -D_LARGEFILE64_SOURCE $(CFLAGS) $(ANDROID_CFLAGS) iozone.c \
+		-o iozone_android.o
+	$(CC) -c -O3 -Dunix -DANDROID -DHAVE_ANSIC_C -DASYNC_IO -D_LARGEFILE64_SOURCE \
+		-DSHARED_MEM -Dlinux $(CFLAGS) $(ANDROID_CFLAGS) libbif.c -o libbif.o
+	$(CC) -c -O3 -Dunix -Dlinux -DANDROID -DHAVE_ANSIC_C -DASYNC_IO \
+		-D_LARGEFILE64_SOURCE $(CFLAGS) $(ANDROID_CFLAGS) libasync.c  -o libasync.o
 
 iozone_linux-AMD64.o:	iozone.c libbif.c libasync.c 
 	@echo ""
@@ -1252,7 +1298,7 @@ iozone_windows.o:	iozone.c libasync.c libbif.c fileop.c
 	@echo "Building iozone for Windows (No async I/O)"
 	@echo ""
 	$(GCC) -c -O -Dunix -DHAVE_ANSIC_C -DNO_MADVISE  \
-		-DWindows $(CFLAGS) -DDONT_HAVE_O_DIRECT iozone.c \
+		-DWindows $(CFLAGS) iozone.c \
 		-o iozone_windows.o
 	$(GCC) -c -O -Dunix -DHAVE_ANSIC_C -DNO_MADVISE \
 		-DWindows $(CFLAGS) libbif.c -o libbif.o
@@ -1409,9 +1455,9 @@ iozone_macosx.o:	iozone.c libbif.c
 	@echo ""
 	@echo "Build iozone for MacOSX"
 	@echo ""
-	$(CC) -c -O -Dunix -Dbsd4_2 -DIOZ_macosx -DHAVE_ANSIC_C -DNO_THREADS \
+	$(CC) -c -O3 -Dunix -Dbsd4_2 -DIOZ_macosx -DHAVE_ANSIC_C -DNO_THREADS \
 		-DNAME='"macosx"' -DSHARED_MEM $(CFLAGS) iozone.c -o iozone_macosx.o
-	$(CC) -c -O -Dunix -Dbsd4_2 -DIOZ_macosx -DHAVE_ANSIC_C -DNO_THREADS \
+	$(CC) -c -O3 -Dunix -Dbsd4_2 -DIOZ_macosx -DHAVE_ANSIC_C -DNO_THREADS \
 		-DSHARED_MEM $(CFLAGS) libbif.c -o libbif.o
 
 iozone_openbsd.o:	iozone.c libbif.c

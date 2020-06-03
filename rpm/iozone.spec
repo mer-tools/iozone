@@ -1,6 +1,6 @@
 Summary: Filesystem Benchmark
 Name: iozone
-Version: 3.420
+Version: 3.489
 Release: 1
 License: Freeware
 URL: http://www.iozone.org
