@@ -2637,5 +2637,37 @@ Bug fix code in special_gen_new_buf..
 Revision 3.478
 Bug fix code in special_gen_new_buf.. More copies of the other bug.
 =============================================================================
+Revision 3.479
+Bug fix code in special_gen_new_buf.. needed (*op ==0) in one more line.
+=============================================================================
+Revision 3.480
+Add -+R option to specify the file names are in a file.
+=============================================================================
+Revision 3.481
+Adding new contributor Sudhir Kumar
+=============================================================================
+Revision 3.482
+Fix help menu for -+R option.  It does not also use -F
+Bug fix for case of -H where gcc seems to think the size of long long
+is != size of off64_t
+Bug fix for prototype mismatch in async_write_no_copy.
+=============================================================================
+Revision 3.483
+Fix nesting of #ifdefs so that Windows lack of support for O_DIRECT presents
+splash indication.
+Enable O_DIRECT for Windows builds.
+=============================================================================
+Revision 3.485
+Improvements for building under Android
+=============================================================================
+Revision 3.486
+Fix compiler warning on Android.
+=============================================================================
+Revision 3.488
+Improve the Yates/Knuth method for shuffle.
+=============================================================================
+Revision 3.489
+Fix gcc-10 warning about no-common.
+=============================================================================
 
 
