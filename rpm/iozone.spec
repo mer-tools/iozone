@@ -30,8 +30,12 @@ echo "Building for %{_arch} arch."
     %ifarch aarch64
       %make_build linux-arm
     %else
-      echo "No idea how to build for your arch..."
-      exit 1
+      %ifarch x86_64
+        %make_build linux-AMD64
+      %else
+        echo "No idea how to build for your arch..."
+        exit 1
+      %endif
     %endif
   %endif
 %endif
@@ -46,5 +50,4 @@ cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/gengnuplot.sh $RPM_BUILD_ROOT/o
 cp $RPM_BUILD_DIR/%{name}-%{version}/src/current/gnu3d.dem $RPM_BUILD_ROOT/opt/%{name}/bin/
 
 %files
-%defattr(-,root,root,-)
 /opt/%{name}/bin/
